@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Assa Food 99</title>
+  <style>
+    body {
+      margin: 0; font-family: 'Poppins', sans-serif;
+      background-color: #fff8d1; color: #5d001e;
+      font-size: 14px; padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #c62828;
+    }
+    #login-section, #admin-section {
+      max-width: 600px;
+      margin: 40px auto;
+      background: #fff3cd;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid #c62828;
+      font-size: 1em;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+    textarea {
+      resize: vertical;
+    }
+    button {
+      background-color: #c62828;
+      color: white;
+      border: none;
+      padding: 10px;
+      width: 100%;
+      border-radius: 30px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      margin-top: 5px;
+    }
+    button:hover {
+      background-color: #8e0000;
+    }
+    #logout-btn {
+      margin-top: 10px;
+    }
+    .review-item {
+      background: #fff8e1;
+      margin-bottom: 15px;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      position: relative;
+    }
+    .review-item h3 {
+      margin: 0 0 5px 0;
+      color: #b71c1c;
+    }
+    .rating {
+      color: #ffc107;
+      font-size: 1.2em;
+      margin-bottom: 8px;
+    }
+    .comment {
+      margin-top: 8px;
+      font-style: italic;
+    }
+    .btn-small {
+      font-size: 0.8em;
+      padding: 5px 10px;
+      border-radius: 20px;
+      width: auto;
+      margin-right: 5px;
+      cursor: pointer;
+    }
+    .btn-edit {
+      background-color: #f9a825;
+      color: #5d001e;
+    }
+    .btn-delete {
+      background-color: #b71c1c;
+    }
+    #no-reviews {
+      text-align: center;
+      color: #a05;
+      font-style: italic;
+    }
+    #add-review-form {
+      margin-top: 30px;
+      background: #fff3cd;
+      padding: 15px;
+      border-radius: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    #refresh-btn {
+      background-color: #5d001e;
+      margin-bottom: 15px;
+      border-radius: 30px;
+    }
+  </style>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set, remove, update, push } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyChQ26BLRY_ugDR_YIkuCTREtO6juxNGh4",
+      authDomain: "tahususumanik.firebaseapp.com",
+      databaseURL: "https://tahususumanik-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "tahususumanik",
+      storageBucket: "tahususumanik.appspot.com",
+      messagingSenderId: "1026607233900",
+      appId: "1:1026607233900:web:1fb44550ca0ef932d21149",
+      measurementId: "G-R7FN7NSRGH"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const PASSWORD_ADMIN = "assa04"; // Ganti sesuai kebutuhan
+
+    let isLoggedIn = false;
+    let reviewsCache = {}; // Simpan sementara data reviews dan key-nya
+
+    // Escape HTML untuk keamanan
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, function(m) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+      });
+    }
+
+    // Konversi rating angka ke bintang
+    function ratingToStars(rating) {
+      let starsStr = '';
+      for(let i=1; i<=5; i++) {
+        starsStr += i <= rating ? '★' : '☆';
+      }
+      return starsStr;
+    }
+
+    // Tampilkan semua review di admin panel
+    function renderReviews() {
+      const list = document.getElementById('reviews-list');
+      const reviewsRef = ref(db, 'reviews');
+      onValue(reviewsRef, snapshot => {
+        const data = snapshot.val();
+        reviewsCache = data || {};
+        list.innerHTML = '';
+        if (!data) {
+          list.innerHTML = '<p id="no-reviews">Belum ada ulasan yang masuk.</p>';
+          return;
+        }
+        Object.entries(data).forEach(([key, r]) => {
+          const div = document.createElement('div');
+          div.className = 'review-item';
+          div.innerHTML = `
+            <h3>${escapeHtml(r.name)}</h3>
+            <div class="rating">${ratingToStars(r.rating)} (${r.rating}/5)</div>
+            <div class="comment">${escapeHtml(r.comment)}</div>
+            <button class="btn-small btn-edit" onclick="startEdit('${key}')">Edit</button>
+            <button class="btn-small btn-delete" onclick="deleteReview('${key}')">Hapus</button>
+          `;
+          list.appendChild(div);
+        });
+      });
+    }
+
+    // Mulai edit review: isi form edit
+    window.startEdit = function(key) {
+      const review = reviewsCache[key];
+      if (!review) return alert("Data ulasan tidak ditemukan");
+
+      document.getElementById('edit-key').value = key;
+      document.getElementById('edit-name').value = review.name;
+      document.getElementById('edit-rating').value = review.rating;
+      document.getElementById('edit-comment').value = review.comment;
+
+      document.getElementById('edit-section').style.display = 'block';
+      document.getElementById('add-review-form').style.display = 'none';
+      window.scrollTo(0, document.body.scrollHeight);
+    };
+
+    // Simpan hasil edit ke Firebase
+    window.saveEdit = function(event) {
+      event.preventDefault();
+      const key = document.getElementById('edit-key').value;
+      const name = document.getElementById('edit-name').value.trim();
+      const rating = Number(document.getElementById('edit-rating').value);
+      const comment = document.getElementById('edit-comment').value.trim();
+
+      if (!name || !comment || !(rating >= 1 && rating <= 5)) {
+        alert('Mohon isi semua data dengan benar');
+        return;
+      }
+
+      const reviewRef = ref(db, 'reviews/' + key);
+      update(reviewRef, { name, rating, comment })
+        .then(() => {
+          alert('Ulasan berhasil diupdate');
+          document.getElementById('edit-section').style.display = 'none';
+          document.getElementById('add-review-form').style.display = 'block';
+        })
+        .catch(err => alert('Gagal update ulasan: ' + err.message));
+    };
+
+    // Batalkan edit
+    window.cancelEdit = function() {
+      document.getElementById('edit-section').style.display = 'none';
+      document.getElementById('add-review-form').style.display = 'block';
+    };
+
+    // Hapus review
+    window.deleteReview = function(key) {
+      if (confirm("Yakin ingin menghapus ulasan ini?")) {
+        const reviewRef = ref(db, 'reviews/' + key);
+        remove(reviewRef)
+          .catch(err => alert('Gagal menghapus ulasan: ' + err.message));
+      }
+    };
+
+    // Tambah review baru
+    window.addReview = function(event) {
+      event.preventDefault();
+      const name = document.getElementById('add-name').value.trim();
+      const rating = Number(document.getElementById('add-rating').value);
+      const comment = document.getElementById('add-comment').value.trim();
+
+      if (!name || !comment || !(rating >= 1 && rating <= 5)) {
+        alert('Mohon isi semua data dengan benar');
+        return;
+      }
+
+      const newReviewRef = push(ref(db, 'reviews'));
+      set(newReviewRef, { name, rating, comment })
+        .then(() => {
+          alert('Ulasan berhasil ditambahkan');
+          document.getElementById('add-name').value = '';
+          document.getElementById('add-rating').value = '5';
+          document.getElementById('add-comment').value = '';
+        })
+        .catch(err => alert('Gagal menambahkan ulasan: ' + err.message));
+    };
+
+    // Refresh ulasan manual (sebenarnya onValue sudah realtime, ini untuk force reload)
+    window.refreshReviews = function() {
+      renderReviews();
+    };
+
+    // Login function
+    window.loginAdmin = function(event) {
+      event.preventDefault();
+      const pwd = document.getElementById('password').value;
+      if (pwd === PASSWORD_ADMIN) {
+        isLoggedIn = true;
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('admin-section').style.display = 'block';
+        renderReviews();
+      } else {
+        alert('Password salah, coba lagi');
+      }
+    };
+
+    // Logout
+    window.logoutAdmin = function() {
+      isLoggedIn = false;
+      document.getElementById('admin-section').style.display = 'none';
+      document.getElementById('login-section').style.display = 'block';
+      document.getElementById('password').value = '';
+    };
+
+  </script>
+</head>
+<body>
+  <h1>Admin Assa Food 99</h1>
+
+  <!-- LOGIN -->
+  <section id="login-section">
+    <form onsubmit="loginAdmin(event)">
+      <label for="password">Masukkan password admin:</label>
+      <input type="password" id="password" placeholder="Password admin" required />
+      <button type="submit">Login</button>
+    </form>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="admin-section" style="display:none;">
+
+    <div id="reviews-list">
+      <!-- Daftar ulasan akan muncul di sini -->
+    </div>
+
+    <!-- Form tambah ulasan baru -->
+    <form id="add-review-form" onsubmit="addReview(event)">
+      <h2>Tambah Ulasan Baru</h2>
+      <input type="text" id="add-name" placeholder="Nama pelanggan" required />
+      <select id="add-rating" required>
+        <option value="5">5 - Sangat Bagus</option>
+        <option value="4">4 - Bagus</option>
+        <option value="3">3 - Cukup</option>
+        <option value="2">2 - Kurang</option>
+        <option value="1">1 - Buruk</option>
+      </select>
+      <textarea id="add-comment" placeholder="Komentar" rows="3" required></textarea>
+      <button type="submit">Tambah Ulasan</button>
+    </form>
+
+    <!-- Form edit ulasan -->
+    <form id="edit-section" style="display:none;" onsubmit="saveEdit(event)">
+      <h2>Edit Ulasan</h2>
+      <input type="hidden" id="edit-key" />
+      <input type="text" id="edit-name" placeholder="Nama pelanggan" required />
+      <select id="edit-rating" required>
+        <option value="5">5 - Sangat Bagus</option>
+        <option value="4">4 - Bagus</option>
+        <option value="3">3 - Cukup</option>
+        <option value="2">2 - Kurang</option>
+        <option value="1">1 - Buruk</option>
+      </select>
+      <textarea id="edit-comment" placeholder="Komentar" rows="3" required></textarea>
+      <button type="submit">Simpan Perubahan</button>
+      <button type="button" onclick="cancelEdit()" style="background-color:#aaa;margin-top:5px;">Batal</button>
+    </form>
+    
+    <form>
+      <button id="logout-btn" onclick="logoutAdmin()">Logout</button>
+    </form>
+  </section>
+</body>
+</html>
